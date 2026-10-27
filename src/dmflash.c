@@ -68,10 +68,10 @@ dmod_dmdrvi_dif_api_declaration(2.0, dmflash, int, _stat, ( dmdrvi_context_t con
 int dmod_init(const Dmod_Config_t* config)
 {
     (void)config;
-    return 0;
+    return dmflash_core_init();
 }
 
 int dmod_deinit(void)
 {
-    return 0;
+    return dmflash_core_deinit();
 }

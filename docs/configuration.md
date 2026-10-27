@@ -1,6 +1,6 @@
 # Configuration
 
-One `[flash]` section (the section's name is the node's name: `/dev/dmflashx/<section>`; `[dmflash]` works too). The
+One section per node; the section's name is the node's name (`[flash]` makes `/dev/dmflashx/flash`). The
 `.ini` files of `configs/` are installed with the module (`dmflash.dmr`): `configs/mcu/<mcu>.ini` is the whole chip,
 read only; `configs/board/<board>/flash.ini` is the chip with a region you may write.
 
@@ -15,6 +15,30 @@ read only; `configs/board/<board>/flash.ini` is the chip with a region you may w
 | `mode` | `ro` | `ro` refuses writes and erases (`-EROFS`), `rw` allows them |
 | `program_bits` | 32 | Width of one programming step: 32 at a supply of 2.7-3.6 V, 16 at 2.1-2.7 V, 8 at 1.8-2.1 V (64 needs an external VPP and was not tried) |
 | `timeout_ms` | 5000 | The longest an erase or a program step may take (the controller hung) |
+
+## Several nodes
+
+The controller is one, the regions may be many: a file of several sections (`[fs]`, `[bank_a]`, `[bank_b]`, ...) makes
+a node of each, and each can only reach its own sectors - so the file system cannot erase a bank and the updater
+cannot touch the file system. The nodes share the controller and one lock (an erase stops the CPU anyway). They have
+to agree on the chip (`base`, `layout`, `program_bits`, `timeout_ms`) and **their regions must not overlap**; a node
+that does not is not created (`-EBUSY`, in the log). Validated on an STM32F746G-DISCO with two nodes on sectors 6 and 7.
+
+```
+[bank_a]
+driver_name=dmflash
+layout=4x32k,1x128k,3x256k
+offset=0x80000
+size=0x40000
+mode=rw
+
+[bank_b]
+driver_name=dmflash
+layout=4x32k,1x128k,3x256k
+offset=0xC0000
+size=0x40000
+mode=rw
+```
 
 ## Choosing a region
 

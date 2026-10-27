@@ -34,7 +34,9 @@ typedef struct
 struct dmflash
 {
     uint32_t            magic;
-    dmosi_mutex_t       lock;
+    struct dmflash*     next;           /* The nodes that share the controller */
+    uint32_t            program_bits;
+    uint32_t            timeout_ms;
     uintptr_t           base;
     dmflash_sector_t*   sectors;        /* The whole chip */
     uint32_t            sector_count;
@@ -53,7 +55,15 @@ struct dmflash
  * a negative errno.
  */
 
-/* Opens the controller. NULL: a bad configuration (the layout, a region that is not whole sectors, program_bits) or the controller is taken */
+/*
+ * The controller is one, the nodes are many: a file system, a bank of the firmware, ... each a region of its own
+ * (a [section] of an .ini file each). They share the port and one lock - an erase stops the CPU anyway - and have
+ * to agree on the chip (base, layout, program_bits, timeout_ms) and not to overlap.
+ */
+int dmflash_core_init(void);                            /* (dmod_init) */
+int dmflash_core_deinit(void);                          /* (dmod_deinit) -EBUSY while a node is open */
+
+/* Opens the controller. NULL: a bad configuration (the layout, a region that is not whole sectors, program_bits) or the chip or the region does not agree with the nodes that are open */
 dmflash_t dmflash_create(const dmflash_config_t* config);
 void dmflash_destroy(dmflash_t flash);                  /* (safe with NULL) */
 bool dmflash_is_valid(dmflash_t flash);

@@ -17,6 +17,8 @@ bootloader update, a small file system (littlefs, with `dmlittlefs`) for setting
   The port knows only how to *erase a sector* and *program aligned bytes*.
 * **The chip is a string, not code.** The sectors are `layout=4x32k,1x128k,3x256k` in an `.ini` file
   (`configs/`), so a part with another layout needs a file, not a port.
+* **Several nodes on one controller**: a file system, a firmware bank, ... each a region (a `[section]`) of its own that
+  cannot reach the others.
 * **Safe by default.** `mode=ro` is the default; a region is whole sectors that you name (`offset`, `size`).
   Writes never erase by themselves, and what was written is read back (`-EIO` if it differs, e.g. over data that
   was not erased).

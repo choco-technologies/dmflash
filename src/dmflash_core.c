@@ -3,6 +3,40 @@
 #include <errno.h>
 #include <string.h>
 
+/* What the nodes share: the list of them, and the lock of the controller */
+static struct
+{
+    dmosi_mutex_t lock;
+    dmflash_t     nodes;
+} g;
+
+static void lock_controller(void)
+{
+    dmosi_mutex_lock(g.lock);
+}
+
+static void unlock_controller(void)
+{
+    dmosi_mutex_unlock(g.lock);
+}
+
+int dmflash_core_init(void)
+{
+    g.lock = dmosi_mutex_create(false);
+    g.nodes = NULL;
+    return g.lock != NULL ? 0 : -ENOMEM;
+}
+
+int dmflash_core_deinit(void)
+{
+    if (g.nodes != NULL)
+        return -EBUSY;
+    if (g.lock != NULL)
+        dmosi_mutex_destroy(g.lock);
+    g.lock = NULL;
+    return 0;
+}
+
 static bool valid(dmflash_t flash)
 {
     return flash != NULL && flash->magic == DMFLASH_MAGIC;
@@ -53,40 +87,74 @@ static int resolve_region(dmflash_t flash, const dmflash_config_t* c)
 static void release(dmflash_t flash)
 {
     flash->magic = 0;
-    if (flash->lock != NULL)
-        dmosi_mutex_destroy(flash->lock);
     Dmod_Free(flash->sectors);
     Dmod_Free(flash->scratch);
     Dmod_Free(flash);
 }
 
+/* Reads the layout and the region; nothing of the controller is touched yet */
 static int setup(dmflash_t flash, const dmflash_config_t* c)
 {
     flash->base = c->base;
     flash->unit = c->program_bits / 8;
+    flash->program_bits = c->program_bits;
+    flash->timeout_ms = c->timeout_ms;
     flash->read_only = c->read_only;
-    flash->lock = dmosi_mutex_create(false);
     flash->scratch = Dmod_Malloc(DMFLASH_SCRATCH_SIZE);
-    if (flash->lock == NULL || flash->scratch == NULL)
+    if (flash->scratch == NULL)
         return -ENOMEM;
     int rc = dmflash_layout_parse(c->layout, &flash->sectors, &flash->sector_count);
-    if (rc == 0)
-        rc = resolve_region(flash, c);
-    if (rc != 0)
-        return rc;
-    dmflash_port_config_t port = { c->base, c->program_bits, c->timeout_ms };
-    return dmflash_port_open(&port);
+    return (rc == 0) ? resolve_region(flash, c) : rc;
+}
+
+/* Is `other`, a node that is open, the same chip, used the same way? */
+static bool same_chip(dmflash_t flash, dmflash_t other)
+{
+    return flash->base == other->base && flash->program_bits == other->program_bits &&
+           flash->timeout_ms == other->timeout_ms && flash->sector_count == other->sector_count &&
+           memcmp(flash->sectors, other->sectors, flash->sector_count * sizeof(flash->sectors[0])) == 0;
+}
+
+static bool overlap(dmflash_t a, dmflash_t b)
+{
+    return a->region_offset < b->region_offset + b->region_size && b->region_offset < a->region_offset + a->region_size;
+}
+
+/* Joins the nodes: the first one opens the port. Called with the controller locked. */
+static int attach(dmflash_t flash)
+{
+    for (dmflash_t n = g.nodes; n != NULL; n = n->next)
+    {
+        if (!same_chip(flash, n) || overlap(flash, n))
+            return -EBUSY;
+    }
+    if (g.nodes == NULL)
+    {
+        dmflash_port_config_t port = { flash->base, flash->program_bits, flash->timeout_ms };
+        int rc = dmflash_port_open(&port);
+        if (rc != 0)
+            return rc;
+    }
+    flash->next = g.nodes;
+    g.nodes = flash;
+    return 0;
 }
 
 dmflash_t dmflash_create( const dmflash_config_t* config )
 {
-    if (config == NULL || !config_valid(config))
+    if (config == NULL || !config_valid(config) || g.lock == NULL)
         return NULL;
     dmflash_t flash = Dmod_Malloc(sizeof(*flash));
     if (flash == NULL)
         return NULL;
     memset(flash, 0, sizeof(*flash));
     int rc = setup(flash, config);
+    if (rc == 0)
+    {
+        lock_controller();
+        rc = attach(flash);
+        unlock_controller();
+    }
     if (rc != 0)
     {
         DMOD_LOG_ERROR("dmflash: cannot open the flash (%d)\n", rc);
@@ -101,9 +169,19 @@ void dmflash_destroy( dmflash_t flash )
 {
     if (!valid(flash))
         return;
-    dmosi_mutex_lock(flash->lock);
-    dmflash_port_close();
-    dmosi_mutex_unlock(flash->lock);
+    lock_controller();
+    for (dmflash_t* p = &g.nodes; *p != NULL; p = &(*p)->next)
+    {
+        if (*p == flash)
+        {
+            *p = flash->next;
+            break;
+        }
+    }
+    if (g.nodes == NULL)
+        dmflash_port_close();
+    flash->magic = 0;
+    unlock_controller();
     release(flash);
 }
 
@@ -149,9 +227,9 @@ int dmflash_read( dmflash_t flash, uint32_t offset, void* buffer, size_t size )
 {
     if (!valid(flash) || (buffer == NULL && size != 0) || size > UINT32_MAX || !in_range(flash, offset, (uint32_t)size))
         return -EINVAL;
-    dmosi_mutex_lock(flash->lock);
+    lock_controller();
     memcpy(buffer, region_address(flash, offset), size);
-    dmosi_mutex_unlock(flash->lock);
+    unlock_controller();
     return 0;
 }
 
@@ -198,9 +276,9 @@ int dmflash_write( dmflash_t flash, uint32_t offset, const void* buffer, size_t 
         return -EINVAL;
     if (flash->read_only)
         return -EROFS;
-    dmosi_mutex_lock(flash->lock);
+    lock_controller();
     int rc = write_locked(flash, offset, buffer, (uint32_t)size);
-    dmosi_mutex_unlock(flash->lock);
+    unlock_controller();
     return rc;
 }
 
@@ -250,11 +328,11 @@ int dmflash_erase( dmflash_t flash, uint32_t offset, uint32_t size )
     if (flash->read_only)
         return -EROFS;
     uint32_t first = 0, count = 0;
-    dmosi_mutex_lock(flash->lock);
+    lock_controller();
     int rc = (size == 0) ? 0 : locate_span(flash, offset, size, &first, &count);
     for (uint32_t i = 0; rc == 0 && i < count; i++)
         rc = erase_sector(flash, first + i);
-    dmosi_mutex_unlock(flash->lock);
+    unlock_controller();
     return rc;
 }
 

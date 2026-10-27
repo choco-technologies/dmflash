@@ -3,13 +3,22 @@
 
 #define DEFAULT_SECTION "flash"
 
+/*
+ * The section of this node. dmdevfs hands a driver the file with its own section as the active one (the others are
+ * not visible), so the first section with a layout is it; a file of several sections ([fs], [bank_b], ...) makes
+ * a node of each, named after the section.
+ */
 static const char* config_section(dmini_context_t ini)
 {
     if (dmini_has_key(ini, DEFAULT_SECTION, "layout"))
         return DEFAULT_SECTION;
-    if (dmini_has_key(ini, "dmflash", "layout"))
-        return "dmflash";
-    return dmini_section_count(ini) ? dmini_section_name(ini, 0) : DEFAULT_SECTION;
+    for (int i = 0; i < dmini_section_count(ini); i++)
+    {
+        const char* name = dmini_section_name(ini, i);
+        if (name != NULL && dmini_has_key(ini, name, "layout"))
+            return name;
+    }
+    return DEFAULT_SECTION;
 }
 
 /* A number key (decimal, 0x hex, k / m): left as it is when the key is not there. false: not a number */

@@ -24,7 +24,7 @@ The core calls these with its mutex held, one at a time; addresses are absolute.
 
 | Function | |
 | --- | --- |
-| `int dmflash_port_open(const dmflash_port_config_t*)` | Takes the controller (`-EBUSY` if taken), `-ENOTSUP` for a width it cannot do |
+| `int dmflash_port_open(const dmflash_port_config_t*)` | Takes the controller (`-EBUSY` if taken), `-ENOTSUP` for a width it cannot do. The core calls it once, for the first node, and `_close` for the last: the port does not know about nodes |
 | `void dmflash_port_close(void)` | |
 | `int dmflash_port_erase(uint32_t sector, uintptr_t address, uint32_t size)` | `sector` is the index in the layout of the whole chip |
 | `int dmflash_port_program(uintptr_t address, const void* data, uint32_t size)` | Address and size multiples of `program_bits / 8`. Afterwards the data reads back as it is on the medium (the port invalidates the caches it knows of) |

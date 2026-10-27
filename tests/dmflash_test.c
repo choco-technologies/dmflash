@@ -37,6 +37,7 @@ static dmdrvi_dev_num_t g_number;
 
 typedef struct
 {
+    const char* section;
     const char* layout;
     const char* offset;
     const char* size;
@@ -57,10 +58,12 @@ static void hex(char* out, uintptr_t value)
     *out = '\0';
 }
 
+static const char* g_section = "flash";
+
 static void put(dmini_context_t ini, const char* key, const char* value)
 {
     if (value != NULL)
-        dmini_set_string(ini, "flash", key, value);
+        dmini_set_string(ini, g_section, key, value);
 }
 
 static dmdrvi_context_t make_node(const node_options_t* o)
@@ -68,6 +71,7 @@ static dmdrvi_context_t make_node(const node_options_t* o)
     dmini_context_t ini = dmini_create();
     char base[2 * sizeof(uintptr_t) + 3];
     hex(base, g_base);
+    g_section = (o->section != NULL) ? o->section : "flash";
     put(ini, "driver_name", "dmflash");
     put(ini, "base", base);
     put(ini, "layout", o->layout != NULL ? o->layout : LAYOUT);
@@ -268,12 +272,113 @@ DMOD_TEST_STEP(layouts_may_be_written_in_several_ways)
     close_node(&n);
 }
 
-DMOD_TEST_STEP(only_one_flash_controller_is_taken_at_a_time)
+DMOD_TEST_STEP(a_second_node_may_not_overlap_the_first)
 {
-    DMOD_TEST_EXPECT_NULL(make_default());
+    DMOD_TEST_EXPECT_NULL(make_default());                                      /* (the whole flash is taken) */
     close_node(&g_node);
     g_node = make_default();
     DMOD_TEST_EXPECT_NOT_NULL(g_node);
+}
+
+DMOD_TEST_STEP(nodes_with_separate_regions_share_the_controller)
+{
+    close_node(&g_node);
+    node_options_t fs = { .section = "fs", .offset = "0", .size = "0x20000" };         /* Sectors 0 to 3 */
+    node_options_t bank = { .section = "bank_b", .offset = "0x80000" };                /* Sectors 6 and 7 */
+    dmdrvi_context_t a = make_node(&fs);
+    DMOD_TEST_EXPECT_NOT_NULL(a);
+    DMOD_TEST_EXPECT_EQ(strcmp(g_number.alt_name, "fs"), 0);
+    dmdrvi_context_t b = make_node(&bank);
+    DMOD_TEST_EXPECT_NOT_NULL(b);
+    DMOD_TEST_EXPECT_EQ(strcmp(g_number.alt_name, "bank_b"), 0);
+    uint8_t one = 0x11, two = 0x22, back = 0;
+    DMOD_TEST_EXPECT_EQ(wr(a, 0, &one, 1), 1);
+    DMOD_TEST_EXPECT_EQ(wr(b, 0, &two, 1), 1);
+    DMOD_TEST_EXPECT_EQ(rd(a, 0, &back, 1), 1);
+    DMOD_TEST_EXPECT_EQ(back, 0x11);
+    DMOD_TEST_EXPECT_EQ(rd(b, 0, &back, 1), 1);
+    DMOD_TEST_EXPECT_EQ(back, 0x22);
+    DMOD_TEST_EXPECT_EQ(er(b, 0, 0x40000), 0);                                  /* (an erase in one node ...) */
+    DMOD_TEST_EXPECT_EQ(rd(a, 0, &back, 1), 1);
+    DMOD_TEST_EXPECT_EQ(back, 0x11);                                            /* (... leaves the other alone) */
+    DMOD_TEST_EXPECT_EQ(er(a, 0x40000, 0x8000), -EINVAL);                       /* Not its region */
+    close_node(&a);                                                             /* The controller stays open for b */
+    DMOD_TEST_EXPECT_EQ(wr(b, 0, &two, 1), 1);
+    close_node(&b);
+    a = make_node(&fs);                                                         /* ... and closes with the last */
+    DMOD_TEST_EXPECT_NOT_NULL(a);
+    close_node(&a);
+}
+
+DMOD_TEST_STEP(nodes_have_to_agree_on_the_chip)
+{
+    close_node(&g_node);
+    node_options_t fs = { .section = "fs", .offset = "0", .size = "0x20000" };
+    dmdrvi_context_t a = make_node(&fs);
+    DMOD_TEST_EXPECT_NOT_NULL(a);
+    node_options_t overlapping = { .section = "other", .offset = "0x18000", .size = "0x8000" };
+    DMOD_TEST_EXPECT_NULL(make_node(&overlapping));
+    node_options_t width = { .section = "other", .offset = "0x80000", .program_bits = "16" };
+    DMOD_TEST_EXPECT_NULL(make_node(&width));
+    node_options_t layout = { .section = "other", .layout = "1x1m", .offset = "0" , .size = "0x100000" };
+    DMOD_TEST_EXPECT_NULL(make_node(&layout));
+    node_options_t fine = { .section = "other", .offset = "0x20000", .size = "0x20000" };
+    dmdrvi_context_t b = make_node(&fine);                                      /* (just next to it) */
+    DMOD_TEST_EXPECT_NOT_NULL(b);
+    close_node(&b);
+    close_node(&a);
+}
+
+/* The text of a file as it is on the board: no base (the default), nothing but what the sections need */
+DMOD_TEST_STEP(two_sections_of_a_board_file_make_two_nodes)
+{
+    close_node(&g_node);
+    static const char text[] =
+        "[bank_a]\ndriver_name=dmflash\ndriver_order=0\nlayout=4x32k,1x128k,3x256k\noffset=0x80000\nsize=0x40000\nmode=rw\n\n"
+        "[bank_b]\ndriver_name=dmflash\ndriver_order=0\nlayout=4x32k,1x128k,3x256k\noffset=0xC0000\nsize=0x40000\nmode=rw\n";
+    dmini_context_t ini = dmini_create();
+    DMOD_TEST_EXPECT_TRUE(dmini_parse_string(ini, text) == 0);
+    DMOD_TEST_EXPECT_EQ(dmini_set_active_section(ini, "bank_a", 0), 0);
+    dmdrvi_context_t a = g_create(ini, &g_number);
+    DMOD_TEST_EXPECT_NOT_NULL(a);
+    DMOD_TEST_EXPECT_EQ(dmini_clear_active_section(ini, 0), 0);
+    DMOD_TEST_EXPECT_EQ(dmini_set_active_section(ini, "bank_b", 0), 0);
+    dmdrvi_context_t b = g_create(ini, &g_number);
+    DMOD_TEST_EXPECT_NOT_NULL(b);
+    DMOD_TEST_EXPECT_EQ(strcmp(g_number.alt_name, "bank_b"), 0);
+    close_node(&a);
+    close_node(&b);
+    dmini_destroy(ini);
+}
+
+DMOD_TEST_STEP(a_file_of_several_sections_makes_a_node_of_each_active_section)
+{
+    close_node(&g_node);
+    dmini_context_t ini = dmini_create();
+    char base[2 * sizeof(uintptr_t) + 3];
+    hex(base, g_base);
+    dmini_set_string(ini, "fs", "layout", LAYOUT);
+    dmini_set_string(ini, "fs", "base", base);
+    dmini_set_string(ini, "fs", "size", "0x20000");
+    dmini_set_string(ini, "bank_b", "layout", LAYOUT);
+    dmini_set_string(ini, "bank_b", "base", base);
+    dmini_set_string(ini, "bank_b", "offset", "0x80000");
+    DMOD_TEST_EXPECT_EQ(dmini_set_active_section(ini, "bank_b", 0), 0);        /* (what dmdevfs does) */
+    dmdrvi_context_t b = g_create(ini, &g_number);
+    DMOD_TEST_EXPECT_NOT_NULL(b);
+    DMOD_TEST_EXPECT_EQ(strcmp(g_number.alt_name, "bank_b"), 0);
+    DMOD_TEST_EXPECT_EQ(dmini_set_active_section(ini, "fs", 0), 0);
+    dmdrvi_context_t a = g_create(ini, &g_number);
+    DMOD_TEST_EXPECT_NOT_NULL(a);
+    DMOD_TEST_EXPECT_EQ(strcmp(g_number.alt_name, "fs"), 0);
+    dmflash_info_t info;
+    DMOD_TEST_EXPECT_EQ(g_ioctl(a, NULL, DMFLASH_IOCTL_GET_INFO, &info), 0);
+    DMOD_TEST_EXPECT_EQ(info.size, 0x20000u);
+    DMOD_TEST_EXPECT_EQ(g_ioctl(b, NULL, DMFLASH_IOCTL_GET_INFO, &info), 0);
+    DMOD_TEST_EXPECT_EQ(info.size, 0x80000u);
+    close_node(&a);
+    close_node(&b);
+    dmini_destroy(ini);
 }
 
 DMOD_TEST_STEP(erased_flash_reads_as_ff)

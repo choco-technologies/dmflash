@@ -27,3 +27,8 @@ flashtest: 0 failed step(s)
 
 The two [ERROR] lines are the file layer reporting the refused operations the test expects (write over data that is not erased, read past the end).
 Not validated on hardware: the STM32F4 port (it shares the code of this one; only the accelerator reset of stm32f4/port.c differs), program_bits other than 32.
+
+Two nodes on one controller (2026-10-27, after a clean boot): the file has [bank_a] (offset 0x80000, size 0x40000) and [bank_b] (offset 0xC0000, size 0x40000), both mode=rw.
+  flashtest /dev/dmflashx/bank_a : flash info address=0x8080000 size=0x40000 sectors=1 unit=4 ... flashtest: 0 failed step(s)
+  flashtest /dev/dmflashx/bank_b : flash info address=0x80c0000 size=0x40000 sectors=1 unit=4 ... flashtest: 0 failed step(s)
+Note: replacing dmflash.dmfc in /ext/bin and remounting /ext is not enough - the module that is loaded stays; reboot to run the new one.
