@@ -36,11 +36,11 @@ bool dmflash_config_read(dmini_context_t ini, dmflash_config_t* config, const ch
     if (ini == NULL || config == NULL || section == NULL)
         return false;
     const char* s = config_section(ini);
-    uint32_t base = (uint32_t)config->base;
-    bool ok = read_number(ini, s, "base", &base) && read_number(ini, s, "offset", &config->offset) &&
+    const char* base = dmini_get_string(ini, s, "base", NULL);
+    bool ok = (base == NULL || dmflash_parse_address(base, &config->base) == 0) &&
+              read_number(ini, s, "offset", &config->offset) &&
               read_number(ini, s, "size", &config->size) && read_number(ini, s, "program_bits", &config->program_bits) &&
               read_number(ini, s, "timeout_ms", &config->timeout_ms) && read_mode(ini, s, &config->read_only);
-    config->base = base;
     config->layout = dmini_get_string(ini, s, "layout", NULL);
     *section = s;
     return ok && config->layout != NULL;

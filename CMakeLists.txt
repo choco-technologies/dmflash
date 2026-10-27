@@ -65,6 +65,7 @@ set(DMOD_DIF_IMPLS          )
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     src/dmflash.c
+    src/dmflash_core.c
     src/dmflash_layout.c
     src/dmflash_config.c
     src/dmflash_device.c

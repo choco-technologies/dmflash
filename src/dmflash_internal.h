@@ -4,12 +4,32 @@
 #include "dmod.h"
 #include "dmosi.h"
 #include "dmini.h"
-#include "dmflash.h"
+#include "dmflash_ioctl.h"
 #include "dmdrvi.h"
 
 #define DMFLASH_MAGIC           0x464C5348u     /* "FLSH" */
 #define DMFLASH_MAX_SECTORS     1024u
 #define DMFLASH_SCRATCH_SIZE    256u            /* A write goes to the port in pieces of this size at most */
+
+/* The flash of one node */
+typedef struct dmflash* dmflash_t;
+
+/*
+ * What the driver is told: the [flash] section of an .ini file (docs/configuration.md). Nothing about the chip is
+ * built into the code - its sectors are a string - so a part with another layout needs an .ini, not a port.
+ */
+typedef struct
+{
+    uintptr_t   base;           /* Address of the first byte of the flash (it is memory mapped) */
+    const char* layout;         /* The sectors of the whole chip: "4x32k,1x128k,3x256k" (borrowed while it is created) */
+    uint32_t    offset;         /* The exposed region: where it starts (a sector boundary), ... */
+    uint32_t    size;           /* ... and its size (0: up to the end of the flash) */
+    bool        read_only;      /* Writes and erases are refused */
+    uint32_t    program_bits;   /* The width of one programming step: 8, 16, 32 or 64 (the supply voltage decides) */
+    uint32_t    timeout_ms;     /* The longest an erase or a program step may take */
+} dmflash_config_t;
+
+#define DMFLASH_CONFIG_DEFAULT  { 0x08000000u, NULL, 0, 0, true, 32, 5000 }
 
 struct dmflash
 {
@@ -27,10 +47,31 @@ struct dmflash
     uint8_t*            scratch;
 };
 
+/*
+ * dmflash_core.c: the flash, all of it hardware independent (the port, dmflash_port.h, only erases a sector and
+ * programs aligned bytes). Offsets are bytes from the start of the exposed region. Every function returns 0 or
+ * a negative errno.
+ */
+
+/* Opens the controller. NULL: a bad configuration (the layout, a region that is not whole sectors, program_bits) or the controller is taken */
+dmflash_t dmflash_create(const dmflash_config_t* config);
+void dmflash_destroy(dmflash_t flash);                  /* (safe with NULL) */
+bool dmflash_is_valid(dmflash_t flash);
+int dmflash_get_info(dmflash_t flash, dmflash_info_t* info);
+int dmflash_get_sector(dmflash_t flash, uint32_t index, dmflash_sector_t* sector);
+int dmflash_read(dmflash_t flash, uint32_t offset, void* buffer, size_t size);
+/* -EROFS when the region is read only, -EIO when what was read back is not what was written */
+int dmflash_write(dmflash_t flash, uint32_t offset, const void* buffer, size_t size);
+/* The range has to be made of whole sectors (-EINVAL otherwise, nothing is erased) */
+int dmflash_erase(dmflash_t flash, uint32_t offset, uint32_t size);
+
 /* dmflash_layout.c */
 
 /* "0x08000000", "32k", "1m", "4096": -EINVAL if it is not (all) a number, -ERANGE if it does not fit in 32 bits */
 int dmflash_parse_number(const char* text, uint32_t* value);
+
+/* The same for an address, which may need more than 32 bits (a host pointer in the tests) */
+int dmflash_parse_address(const char* text, uintptr_t* value);
 
 /* "4x32k,1x128k,3x256k" into a table from the heap (Dmod_Free it) with the offset of every sector */
 int dmflash_layout_parse(const char* text, dmflash_sector_t** table, uint32_t* count);

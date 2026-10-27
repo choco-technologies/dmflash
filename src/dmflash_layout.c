@@ -14,8 +14,8 @@ static int digit_of(char c, unsigned base)
     return (d >= 0 && (unsigned)d < base) ? d : -1;
 }
 
-/* A number with an optional k / m suffix, from *p; *p moves past it */
-static int take_number(const char** p, uint32_t* value)
+/* A number with an optional k / m suffix, from *p; *p moves past it. It has to be <= `limit` */
+static int take_limited(const char** p, uint64_t limit, uint64_t* value)
 {
     const char* s = skip_blanks(*p);
     unsigned base = 10;
@@ -28,22 +28,48 @@ static int take_number(const char** p, uint32_t* value)
     uint64_t n = 0;
     for (int d; (d = digit_of(*s, base)) >= 0; s++)
     {
+        if (n > limit / base)
+            return -ERANGE;
         n = n * base + (unsigned)d;
-        if (n > UINT32_MAX)
+        if (n > limit)
             return -ERANGE;
     }
     if (s == digits)
         return -EINVAL;
     if (base == 10 && (*s == 'k' || *s == 'K' || *s == 'm' || *s == 'M'))
     {
-        n <<= (*s == 'k' || *s == 'K') ? 10 : 20;
-        s++;
-        if (n > UINT32_MAX)
+        unsigned shift = (*s == 'k' || *s == 'K') ? 10 : 20;
+        if (n > (limit >> shift))
             return -ERANGE;
+        n <<= shift;
+        s++;
     }
-    *value = (uint32_t)n;
+    *value = n;
     *p = s;
     return 0;
+}
+
+static int take_number(const char** p, uint32_t* value)
+{
+    uint64_t n = 0;
+    int rc = take_limited(p, UINT32_MAX, &n);
+    if (rc == 0)
+        *value = (uint32_t)n;
+    return rc;
+}
+
+int dmflash_parse_address(const char* text, uintptr_t* value)
+{
+    if (text == NULL || value == NULL)
+        return -EINVAL;
+    const char* p = text;
+    uint64_t n = 0;
+    int rc = take_limited(&p, UINTPTR_MAX, &n);
+    if (rc == 0 && *skip_blanks(p) != '\0')
+        return -EINVAL;
+    if (rc == 0)
+        *value = (uintptr_t)n;
+    return rc;
 }
 
 int dmflash_parse_number(const char* text, uint32_t* value)

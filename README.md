@@ -49,18 +49,8 @@ mode=rw
 flashtest /dev/dmflashx/flash     # on-board test of the node; saves and restores the last sector of the region
 ```
 
-From C (another module), without the device node:
-
-```c
-dmflash_config_t config = DMFLASH_CONFIG_DEFAULT;
-config.layout = "4x32k,1x128k,3x256k";
-config.offset = 0x80000;
-config.read_only = false;
-dmflash_t flash = dmflash_create(&config);
-dmflash_erase(flash, 0, 0x40000);           /* a whole sector */
-dmflash_write(flash, 0x100, data, size);
-dmflash_destroy(flash);
-```
+There is **no API to open the flash by hand**: dmdevfs makes the node from the `.ini` file, everyone else opens
+`/dev/dmflashx/flash` (`Dmod_FileOpen`, `Dmod_Ioctl` with `DMDRVI_IOCTL_BLOCK_*` and `dmflash_ioctl.h`).
 
 ## Building
 
@@ -78,16 +68,16 @@ cmake -S . -B build-host -DDMOD_CPU_FAMILY=x86_64 && cmake --build build-host
 DMOD_DMF_DIR=$PWD/build-host/dmf ctest --test-dir build-host --output-on-failure
 ```
 
-16 steps against a flash in RAM that behaves like one (erased bytes are `0xFF`, a program step can only clear bits).
+18 steps through the dmdrvi functions of the module - what dmdevfs calls - against a flash in RAM that behaves like one (erased bytes are `0xFF`, a program step can only clear bits).
 
 ## Project Structure
 
 ```
-include/dmflash.h          API of the core (dmflash_t)
-include/dmflash_types.h    configuration, sector, info
-include/dmflash_ioctl.h    ioctls of the node
+include/dmflash_ioctl.h    the node: ioctls, sector and region info (the only public interface)
 include/dmflash_port.h     the port: open, close, erase, program
-src/dmflash.c              the core + the dmdrvi functions (registration is enabled in this one file)
+include/dmflash_mock.h     the flash in RAM of the host port (tests)
+src/dmflash.c              the dmdrvi functions dmdevfs calls (the registration is enabled in this one file)
+src/dmflash_core.c         the flash: region, padding, verifying, erasing - hardware independent
 src/dmflash_layout.c       numbers and the layout string
 src/dmflash_config.c       the [flash] section of an .ini
 src/dmflash_device.c       block device ioctls
