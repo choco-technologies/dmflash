@@ -3,126 +3,97 @@
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![CI](https://github.com/choco-technologies/dmflash/actions/workflows/ci.yml/badge.svg)](https://github.com/choco-technologies/dmflash/actions/workflows/ci.yml)
 
-dmflash DMOD library module.
+The **internal flash** of a microcontroller as a DMOD block device.
 
 ## Description
 
-TODO: describe what this module does.
+dmflash exposes a region of the on-chip flash - its sectors, however different in size - as a block device node
+(`/dev/dmflashx/flash`): read at any offset, write, erase by sector, `DMDRVI_IOCTL_BLOCK_GET_INFO` and
+`_ERASE`. It is made for what has to live in the internal flash and change: a second bank of the firmware, a
+bootloader update, a small file system (littlefs, with `dmlittlefs`) for settings.
+
+* **Everything is in the core, the port is four functions.** The sectors, the exposed region, the alignment, padding
+  a write to the programming step, reading back what was written, the block device - all are hardware independent.
+  The port knows only how to *erase a sector* and *program aligned bytes*.
+* **The chip is a string, not code.** The sectors are `layout=4x32k,1x128k,3x256k` in an `.ini` file
+  (`configs/`), so a part with another layout needs a file, not a port.
+* **Safe by default.** `mode=ro` is the default; a region is whole sectors that you name (`offset`, `size`).
+  Writes never erase by themselves, and what was written is read back (`-EIO` if it differs, e.g. over data that
+  was not erased).
+
+| Family | Port | State |
+| --- | --- | --- |
+| STM32F7 | `src/port/stm32f7` + `stm32_common` | validated on an STM32F746G-DISCO ([docs/validation](docs/validation/stm32f746g-disco.txt)) |
+| STM32F4 | `src/port/stm32f4` + `stm32_common` | builds; the code is the F7's (the flash interface is the same) - not run on hardware |
+| x86_64 | `src/port/x86_64` | a flash in RAM for the tests of the core |
+
+Erasing or programming stops the CPU while it fetches from the flash: everything that runs from it, the
+interrupts too, waits (a 256 kB sector of an STM32F7 takes up to a second). See [docs/README.md](docs/README.md).
+
+## Using it
+
+Put one of `configs/` as the driver configuration of the board (dmdevfs loads it) and ask for the `dmflash` module;
+`dmf-get` brings `dmflash_port` and `dmini` with it.
+
+```
+# configs/board/stm32f746g-disco/flash.ini: sectors 6 and 7 (2 x 256 kB), read and write
+[flash]
+driver_name=dmflash
+layout=4x32k,1x128k,3x256k
+offset=0x80000
+size=0x80000
+mode=rw
+```
+
+```
+flashtest /dev/dmflashx/flash     # on-board test of the node; saves and restores the last sector of the region
+```
+
+From C (another module), without the device node:
+
+```c
+dmflash_config_t config = DMFLASH_CONFIG_DEFAULT;
+config.layout = "4x32k,1x128k,3x256k";
+config.offset = 0x80000;
+config.read_only = false;
+dmflash_t flash = dmflash_create(&config);
+dmflash_erase(flash, 0, 0x40000);           /* a whole sector */
+dmflash_write(flash, 0x100, data, size);
+dmflash_destroy(flash);
+```
 
 ## Building
 
-### Using CMake
-
 ```bash
-mkdir -p build
-cd build
-cmake ..
-cmake --build .
+cmake -S . -B build -DDMOD_CPU_FAMILY=stm32f7      # or stm32f4; x86_64 builds the tests against the flash in RAM
+cmake --build build
 ```
 
-Pass `-DDMOD_DIR=/path/to/local/dmod` to build against a local dmod checkout
-instead of fetching `develop` from GitHub.
-
-### Using Make
-
-```bash
-make DMOD_MODE=DMOD_MODULE DMOD_DIR=/path/to/dmod
-```
+Pass `-DDMOD_DIR=/path/to/local/dmod` to build against a local dmod checkout instead of fetching `develop`.
 
 ## Testing
 
-Tests are built automatically alongside the module (see `tests/`). Once built,
-run them with `ctest`:
-
 ```bash
-cd build
-ctest --output-on-failure
+cmake -S . -B build-host -DDMOD_CPU_FAMILY=x86_64 && cmake --build build-host
+DMOD_DMF_DIR=$PWD/build-host/dmf ctest --test-dir build-host --output-on-failure
 ```
 
-`ctest` installs the test module's dependencies with `dmf-get` and then runs
-it through `dmod_loader`. To run it manually instead:
+16 steps against a flash in RAM that behaves like one (erased bytes are `0xFF`, a program step can only clear bits).
 
-```bash
-export DMOD_DMF_DIR=$(pwd)/build/dmf
-dmf-get install -d ${DMOD_DMF_DIR}/test_dmflash-local.dmd -y
-dmod_loader build/dmf/test_dmflash.dmf
-```
-
-## Usage
-
-<TBD>
-
-This library module provides functions that can be used by other modules:
-
-```c
-#include "dmflash.h"
-```
-
-## API
-
-| Function | Description |
-|----------|-------------|
-| `dmflash_create()` | Create a new `dmflash_t` instance. |
-| `dmflash_destroy()` | Destroy an instance created by `_create()`. |
-| `dmflash_is_valid()` | Check whether a handle is a valid instance. |
-
-See [include/dmflash.h](include/dmflash.h) for the full
-declarations and [docs/api-reference.md](docs/api-reference.md) for the
-complete reference.
-
-## Documentation
-
-See the `docs/` directory:
-
-- **[api-reference.md](docs/api-reference.md)** - Complete API documentation
-
-View documentation using `dmf-man dmflash`.
-
-## Hardware Port
-
-This module ships two DMOD modules: the architecture-independent
-`dmflash` and `dmflash_port`, which contains the
-architecture-specific implementation. The active architecture is selected via
-`DMOD_CPU_FAMILY` (default: `stm32f7`):
-
-```bash
-cmake .. -DDMOD_CPU_FAMILY=stm32f7
-```
-
-See [docs/port-implementation.md](docs/port-implementation.md) for how to add
-another architecture. Port-specific files:
-
-```
-├── include/dmflash_port.h
-├── src/port/
-│   ├── CMakeLists.txt
-│   └── stm32f7/
-│       ├── config.cmake
-│       └── port.c
-└── dmflash_port.dmr
-```
 ## Project Structure
 
 ```
-dmflash/
-├── docs/              # Documentation (markdown format)
-├── include/           # Public headers
-│   └── dmflash.h
-├── src/
-│   └── dmflash.c
-├── tests/
-│   ├── CMakeLists.txt
-│   └── dmflash_test.c
-├── CMakeLists.txt
-├── Makefile
-├── dmflash.dmr
-└── manifest.dmm
+include/dmflash.h          API of the core (dmflash_t)
+include/dmflash_types.h    configuration, sector, info
+include/dmflash_ioctl.h    ioctls of the node
+include/dmflash_port.h     the port: open, close, erase, program
+src/dmflash.c              the core + the dmdrvi functions (registration is enabled in this one file)
+src/dmflash_layout.c       numbers and the layout string
+src/dmflash_config.c       the [flash] section of an .ini
+src/dmflash_device.c       block device ioctls
+src/port/stm32_common/     the flash interface of the STM32F4 and F7
+src/port/stm32f4, stm32f7  lifecycle and the reset of the accelerator
+src/port/x86_64/           the flash in RAM (tests)
+configs/                   mcu/<mcu>.ini, board/<board>/flash.ini
+tools/flashtest/           on-board test
 ```
-
-## Author
-
-Patryk Kubiak
-
-## License
-
-MIT

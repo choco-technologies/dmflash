@@ -1,7 +1,7 @@
 set(DMOD_MODULE_NAME        test_dmflash)
 set(DMOD_MODULE_VERSION     ${PROJECT_VERSION})
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
-set(DMOD_STACK_SIZE         1024)
+set(DMOD_STACK_SIZE         2048)
 set(DMOD_PRIORITY           0)
 
 dmod_add_test(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
@@ -13,6 +13,14 @@ target_include_directories(${DMOD_MODULE_NAME} PRIVATE
 )
 
 target_link_libraries(${DMOD_MODULE_NAME} dmflash_if)
+
+# The tests run against the flash in RAM of the host port (x86_64): the same core, a port that cannot go wrong
+if(DMOD_CPU_FAMILY STREQUAL "x86_64")
+    target_compile_definitions(${DMOD_MODULE_NAME} PRIVATE DMFLASH_MOCK)
+    target_link_libraries(${DMOD_MODULE_NAME} dmflash_port_if)
+endif()
+
+dmod_link_modules(${DMOD_MODULE_NAME} dmosi dmdrvi dmini)
 
 # Register the test module with ctest - this replays the same two steps CI
 # runs (see .github/templates/ci.yml.template): install the test module's

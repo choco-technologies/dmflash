@@ -16,6 +16,13 @@ set(DMOD_STACK_SIZE         1024)
 # Path to the DMR file for this module
 set(DMOD_DMR_PATH           ${CMAKE_SOURCE_DIR}/dmflash_port.dmr)
 
+# The registers of the flash interface are the same in every STM32F4 and F7: one implementation for both, and the
+# family's port.c is a few lines (the accelerator reset). Another architecture supplies its own port.c.
+set(COMMON_SOURCES)
+if(DMOD_CPU_FAMILY MATCHES "^stm32f[47]$")
+    list(APPEND COMMON_SOURCES stm32_common/stm32_common.c)
+endif()
+
 #
 #   dmod_add_library - create a library module
 #   it has the same signature as add_library
@@ -25,6 +32,7 @@ set(DMOD_DMR_PATH           ${CMAKE_SOURCE_DIR}/dmflash_port.dmr)
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     ${DMOD_CPU_FAMILY}/port.c
+    ${COMMON_SOURCES}
 )
 
 # To depend on another module's headers, use:

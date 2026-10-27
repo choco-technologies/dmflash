@@ -24,7 +24,7 @@ DMOD_MODULE_VERSION=0.1
 DMOD_AUTHOR_NAME=Patryk Kubiak
 
 # The list of C sources
-DMOD_CSOURCES=src/dmflash.c
+DMOD_CSOURCES=src/dmflash.c src/dmflash_layout.c src/dmflash_config.c src/dmflash_device.c
 
 # The list of C++ sources
 DMOD_CXXSOURCES=
