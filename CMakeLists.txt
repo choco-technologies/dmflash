@@ -30,7 +30,7 @@ set(DMOD_BUILD_TEMPLATES OFF CACHE BOOL "Build templates")
 FetchContent_MakeAvailable(dmod)
 
 project(dmflash VERSION ${DMOD_MODULE_VERSION}
-    DESCRIPTION "dmflash DMOD library module"
+    DESCRIPTION "dmflash - the internal flash as a block device"
     LANGUAGES C CXX)
 
 set(DMOD_DIR ${dmod_SOURCE_DIR} CACHE PATH "DMOD source directory")
@@ -65,6 +65,10 @@ set(DMOD_DIF_IMPLS          )
 dmod_add_library(${DMOD_MODULE_NAME} ${DMOD_MODULE_VERSION}
     # List of source files - can include C and C++ files
     src/dmflash.c
+    src/dmflash_core.c
+    src/dmflash_layout.c
+    src/dmflash_config.c
+    src/dmflash_device.c
 )
 
 target_include_directories(${DMOD_MODULE_NAME} PRIVATE
@@ -75,12 +79,12 @@ target_include_directories(${DMOD_MODULE_NAME}_if INTERFACE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# To depend on another module's headers, use:
-#   dmod_link_modules(${DMOD_MODULE_NAME}
-#       other_module@1.0
-#   )
+dmod_link_modules(${DMOD_MODULE_NAME} dmdrvi dmini dmosi)
 
 add_subdirectory(src/port)
 target_link_libraries(${DMOD_MODULE_NAME} ${DMOD_MODULE_NAME}_port_if)
 enable_testing()
 add_subdirectory(tests)
+
+# flashtest: the on-board test of the block device node (tools/flashtest/main.c)
+add_subdirectory(tools/flashtest)

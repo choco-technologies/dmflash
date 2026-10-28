@@ -31,3 +31,7 @@ license=./LICENSE => ${destination}/${module}/LICENSE [origin=${repo_dir}/LICENS
 
 # Adding itself
 dmr=./${module}.dmr => ${destination}/${module}/${module}.dmr [origin=${repo_dir}/${module}.dmr]
+
+# === Configuration ===
+# The .ini files of the driver: configs/mcu/<mcu>.ini (the chip) and configs/board/<board>/flash.ini (the region)
+configs=./configs => ${destination}/${module}/configs [origin=${repo_dir}/configs]

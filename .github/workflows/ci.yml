@@ -23,12 +23,9 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          # dmflash links against dmflash_port_if (headers only),
-          # not dmflash_port itself, so building only these two targets
-          # never touches src/port/*/port.c - safe to build natively here
-          # regardless of which CPU family the port defaults to.
-          cmake .. -DDMOD_MODE=DMOD_MODULE -DDMOD_TOOLS_NAME=arch/x86_64
-          cmake --build . --target dmflash test_dmflash
+          # The tests run against the flash in RAM of the host port (x86_64); hardware ports are built below.
+          cmake .. -DDMOD_MODE=DMOD_MODULE -DDMOD_CPU_FAMILY=x86_64
+          cmake --build . --parallel
 
       - name: Verify module files
         run: |
@@ -42,7 +39,7 @@ jobs:
       - name: Run tests with dmod_loader
         run: |
           export DMOD_DMF_DIR=$(pwd)/build/dmf
-          dmod_loader build/dmf/test_dmflash.dmf
+          ctest --test-dir build --output-on-failure
 
   discover-cpu-families:
     name: Discover CPU Families

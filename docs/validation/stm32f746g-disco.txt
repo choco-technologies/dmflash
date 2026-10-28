@@ -1,0 +1,34 @@
+dmflash on a STM32F746G-DISCO (STM32F746NG, 1 MB, 3.3 V), 2026-10-27
+Firmware: dmod-boot (internal flash image 404 kB), dmflash and dmflash_port from /ext/bin, configs/board/stm32f746g-disco/flash.ini
+Node: /dev/dmflashx/flash, region = sectors 6 and 7 (0x08080000, 2 x 256 kB), mode=rw
+Command: flashtest /dev/dmflashx/flash   (5.5 s; the sector holds 256 kB, saved and restored)
+
+block info: ret=0 logical=512 erase=262144 blocks=1024 flags=0x4
+[PASS] block geometry, erase supported, not read only
+flash info: ret=0 address=0x8080000 size=0x80000 sectors=2 unit=4
+[PASS] flash description
+[PASS] the last sector of the region
+[PASS] save the last sector
+[PASS] erase the sector (block ioctl)
+[PASS] erased sector reads 0xFF
+[PASS] unaligned erase is refused
+[PASS] write 300 bytes at an unaligned offset
+[PASS] read back: pattern in place, the rest still 0xFF
+[ERROR] Failed to write to file
+[PASS] write over data that is not erased is refused
+[PASS] erase again
+[PASS] write 4 kB
+[PASS] read back through the node
+[PASS] the same bytes at the address of the flash
+[ERROR] Failed to read from file
+[PASS] a read past the end of the region is refused
+[PASS] the saved sector content restored
+flashtest: 0 failed step(s)
+
+The two [ERROR] lines are the file layer reporting the refused operations the test expects (write over data that is not erased, read past the end).
+Not validated on hardware: the STM32F4 port (it shares the code of this one; only the accelerator reset of stm32f4/port.c differs), program_bits other than 32.
+
+Two nodes on one controller (2026-10-27, after a clean boot): the file has [bank_a] (offset 0x80000, size 0x40000) and [bank_b] (offset 0xC0000, size 0x40000), both mode=rw.
+  flashtest /dev/dmflashx/bank_a : flash info address=0x8080000 size=0x40000 sectors=1 unit=4 ... flashtest: 0 failed step(s)
+  flashtest /dev/dmflashx/bank_b : flash info address=0x80c0000 size=0x40000 sectors=1 unit=4 ... flashtest: 0 failed step(s)
+Note: replacing dmflash.dmfc in /ext/bin and remounting /ext is not enough - the module that is loaded stays; reboot to run the new one.

@@ -1,29 +1,21 @@
-#define DMOD_ENABLE_REGISTRATION    ON
-#include "dmflash_port.h"
+#define DMOD_ENABLE_REGISTRATION ON
 #include "dmod.h"
+#include "dmflash_port.h"
+#include "../stm32_common/registers.h"
+#include "../stm32_common/stm32_common.h"
 
-/* ---- DMOD lifecycle ---- */
+/* The ART accelerator keeps what it prefetched: reset it (RM0385, FLASH_ACR) */
+#define FLASH_ACR_ARTEN     (1u << 9)
+#define FLASH_ACR_ARTRST    (1u << 11)
 
-int dmod_init(const Dmod_Config_t *Config)
+void stm32_flash_reset_accelerator(void)
 {
-    Dmod_Printf("dmflash port module initialized (stm32f7)\n");
-    return 0;
+    uint32_t acr = FLASH_ACR;
+    FLASH_ACR = acr & ~FLASH_ACR_ARTEN;
+    FLASH_ACR |= FLASH_ACR_ARTRST;
+    FLASH_ACR &= ~FLASH_ACR_ARTRST;
+    FLASH_ACR = acr;
 }
 
-int dmod_deinit(void)
-{
-    Dmod_Printf("dmflash port module deinitialized (stm32f7)\n");
-    return 0;
-}
-
-/* ---- API implementation ----
- *
- * Implement the dmod_dmflash_port_api_declaration(...) functions
- * declared in include/dmflash_port.h here. Register an interrupt
- * handler if needed, e.g.:
- *
- *   DMOD_IRQ_HANDLER(SOME_IRQn)
- *   {
- *       // handle interrupt
- *   }
- */
+int dmod_init(const Dmod_Config_t* config) { (void)config; return 0; }
+int dmod_deinit(void) { return 0; }

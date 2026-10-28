@@ -1,84 +1,77 @@
 #define DMOD_ENABLE_REGISTRATION ON
-#include "dmod.h"
-#include "dmflash.h"
+#include "dmflash_internal.h"
+#include <errno.h>
 
-/* Example internal state - replace with your module's real fields. */
-struct dmflash
-{
-    bool valid;
-};
-
-dmod_dmflash_api_declaration(1.0, dmflash_t, _create, ( void ))
-{
-    /* Dmod_Malloc/Dmod_Free (SAL) are dmod's own heap functions - embedded
-     * targets don't necessarily link a libc allocator, so use these instead
-     * of malloc()/free() in module code. */
-    struct dmflash *instance = Dmod_Malloc(sizeof(*instance));
-    if (instance == NULL)
-    {
-        return NULL;
-    }
-
-    instance->valid = true;
-    return instance;
-}
-
-dmod_dmflash_api_declaration(1.0, void, _destroy, ( dmflash_t handle ))
-{
-    Dmod_Free(handle);
-}
-
-dmod_dmflash_api_declaration(1.0, bool, _is_valid, ( dmflash_t handle ))
-{
-    return handle != NULL && handle->valid;
-}
-
-/**
- * @brief Pre-initialization function for the module.
- *
- * @note This function is optional. You can remove it if you don't need it.
- *
- * This function is called when the module enabling is in progress.
- *
- * You can use this function to load the required dependencies, such as
- * other modules. Please be aware that the module is not fully initialized,
- * so not all the API functions are available - you can check if the API
- * is connected by calling the Dmod_IsFunctionConnected() function.
+/*
+ * The only interface of the module is the dmdrvi device, configured by dmdevfs from an .ini file (configs/): there
+ * is no API to open the flash by hand. These are the functions dmdevfs calls - the registration of a module is
+ * enabled in one file only, this one; the work is in dmflash_core.c (the flash) and dmflash_device.c (the node).
  */
-void dmod_preinit(void)
+
+/* ---- The device (dmdrvi): see dmflash_device.c ---- */
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, dmdrvi_context_t, _create, ( dmini_context_t ini, dmdrvi_dev_num_t* dev_num ))
 {
-    if(Dmod_IsFunctionConnected( Dmod_Printf ))
-    {
-        Dmod_Printf("API is connected!\n");
-    }
+    return (dmdrvi_context_t)dmflash_device_create(ini, dev_num);
 }
 
-/**
- * @brief Initialization function for the module.
- *
- * This function is called when the module is enabled.
- * Please use this function to initialize the module, for instance:
- * - initialize the module variables
- * - initialize the module hardware
- * - allocate memory
- */
-int dmod_init(const Dmod_Config_t *Config)
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, void, _free, ( dmdrvi_context_t context ))
 {
-    Dmod_Printf("Hello, World!\n");
-    return 0;
+    dmflash_destroy((dmflash_t)context);
 }
 
-/**
- * @brief De-initialization function for the module.
- *
- * This function is called when the module is disabled.
- * Please use this function to de-initialize the module, for instance:
- * - free memory
- * - de-initialize the module hardware
- * - de-initialize the module variables
- */
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, void*, _open, ( dmdrvi_context_t context, int flags, const dmdrvi_dev_num_t* dev_num ))
+{
+    (void)flags;
+    (void)dev_num;
+    return dmflash_is_valid((dmflash_t)context) ? context : NULL;
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, void, _close, ( dmdrvi_context_t context, void* handle ))
+{
+    (void)context;
+    (void)handle;
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, dmdrvi_ssize_t, _read, ( dmdrvi_context_t context, void* handle, void* buffer, size_t size, dmdrvi_offset_t offset ))
+{
+    (void)handle;
+    int rc = (offset < 0 || offset > UINT32_MAX) ? -EINVAL : dmflash_read((dmflash_t)context, (uint32_t)offset, buffer, size);
+    return (rc == 0) ? (dmdrvi_ssize_t)size : rc;
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, dmdrvi_ssize_t, _write, ( dmdrvi_context_t context, void* handle, const void* buffer, size_t size, dmdrvi_offset_t offset ))
+{
+    (void)handle;
+    int rc = (offset < 0 || offset > UINT32_MAX) ? -EINVAL : dmflash_write((dmflash_t)context, (uint32_t)offset, buffer, size);
+    return (rc == 0) ? (dmdrvi_ssize_t)size : rc;
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, int, _ioctl, ( dmdrvi_context_t context, void* handle, int command, void* arg ))
+{
+    (void)handle;
+    return dmflash_device_ioctl((dmflash_t)context, command, arg);
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, int, _flush, ( dmdrvi_context_t context, void* handle ))
+{
+    (void)handle;
+    return dmflash_is_valid((dmflash_t)context) ? 0 : -EINVAL;
+}
+
+dmod_dmdrvi_dif_api_declaration(2.0, dmflash, int, _stat, ( dmdrvi_context_t context, const char* path, dmdrvi_stat_t* stat ))
+{
+    (void)path;
+    return dmflash_device_stat((dmflash_t)context, stat);
+}
+
+int dmod_init(const Dmod_Config_t* config)
+{
+    (void)config;
+    return dmflash_core_init();
+}
+
 int dmod_deinit(void)
 {
-    Dmod_Printf("Goodbye, World!\n");
-    return 0;
+    return dmflash_core_deinit();
 }
