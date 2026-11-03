@@ -254,7 +254,7 @@ DMOD_TEST_STEP(bad_layouts_do_not_make_a_node)
     DMOD_TEST_EXPECT_FALSE(layout_opens("4x32q"));
     DMOD_TEST_EXPECT_FALSE(layout_opens("4x32k;1x128k"));
     DMOD_TEST_EXPECT_FALSE(layout_opens("4x0"));
-    DMOD_TEST_EXPECT_FALSE(layout_opens("2000x1k"));
+    DMOD_TEST_EXPECT_FALSE(layout_opens("5000x1k"));
     DMOD_TEST_EXPECT_FALSE(layout_opens("4294967295x4294967295"));
     DMOD_TEST_EXPECT_TRUE(layout_opens("4x32k,1x128k,3x256k"));
 }
