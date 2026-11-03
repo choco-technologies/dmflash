@@ -1,0 +1,29 @@
+dmflash on the ESP32-S3 2.8" display board (ESP32-S3FN16R8: 16 MB flash, 8 MB PSRAM), 2026-11-03
+Firmware: dmod-boot feature/esp32-s3 (src/arch/xtensa/lx7/flash.c), dmflash and dmflash_port as modules, configs/board/esp32s3-lcd28/flash.ini
+Node: /dev/dmflashx/ext, region = 0x700000, 9 MB (2304 sectors of 4 kB), mode=rw; the modules are loaded in the external RAM and the stack of the caller is there
+Command: flashtest /dev/dmflashx/ext
+
+block info: ret=0 logical=512 erase=4096 blocks=18432 flags=0x4
+[PASS] block geometry, erase supported, not read only
+flash info: ret=0 address=0x3c700000 size=0x900000 sectors=2304 unit=4
+[PASS] flash description
+[PASS] the last sector of the region
+[PASS] save the last sector
+[PASS] erase the sector (block ioctl)
+[PASS] erased sector reads 0xFF
+[PASS] unaligned erase is refused
+[PASS] write 300 bytes at an unaligned offset
+[PASS] read back: pattern in place, the rest still 0xFF
+[ERROR] Failed to write to file
+[PASS] write over data that is not erased is refused
+[PASS] erase again
+[PASS] write 4 kB
+[PASS] read back through the node
+[PASS] the same bytes at the address of the flash
+[ERROR] Failed to read from file
+[PASS] a read past the end of the region is refused
+[PASS] the saved sector content restored
+flashtest: 0 failed step(s)
+
+The two [ERROR] lines are the file layer reporting the refused operations the test expects.
+Not validated: program_bits other than 32 (the port refuses them), the nodes of the banks of the firmware.

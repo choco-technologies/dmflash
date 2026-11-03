@@ -27,6 +27,17 @@ caches it knows of (the STM32 port invalidates the Cortex-M7 caches by address w
 
 Select the family with `-DDMOD_CPU_FAMILY=<family>`; do not add a variable of your own.
 
+## A controller that the code cannot work on from where it runs: the ESP32-S3
+
+The SPI that erases the flash serves the caches of the code and of the external RAM too, so the work needs both caches
+off and the code, the data and the stack in the internal RAM - which a module cannot promise. The port
+(`src/port/esp32s3/port.c`) only turns the addresses of the memory window of the flash (`base`) into offsets in the chip;
+the firmware (dmod-boot, `src/arch/xtensa/lx7/flash.c`) offers `dmboot_flash_erase(offset, size)` and
+`dmboot_flash_program(offset, data, size)` to modules as a built-in API and does the work in the handler of a software
+interrupt (the stack of the interrupts is internal), with the caches suspended and the interrupts off. The ROM does the
+SPI work. The chip erases 4 kB sectors; the `layout` of a board's `.ini` can make the part before the region of larger items
+to keep the table of the sectors small (`7x1m,2304x4k`).
+
 ## Notes
 
 * A controller that cannot fetch code from the flash while it erases (the STM32F4 and F7 can not) stalls the CPU for
