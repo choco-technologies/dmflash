@@ -27,10 +27,12 @@ bootloader update, a small file system (littlefs, with `dmlittlefs`) for setting
 | --- | --- | --- |
 | STM32F7 | `src/port/stm32f7` + `stm32_common` | validated on an STM32F746G-DISCO ([docs/validation](docs/validation/stm32f746g-disco.txt)) |
 | STM32F4 | `src/port/stm32f4` + `stm32_common` | builds; the code is the F7's (the flash interface is the same) - not run on hardware |
+| ESP32-S3 | `src/port/esp32s3` (+ `dmboot_flash_*` of dmod-boot) | validated on the ESP32-S3 2.8" board, 16 MB flash ([docs/validation](docs/validation/esp32s3-lcd28.txt)) |
 | x86_64 | `src/port/x86_64` | a flash in RAM for the tests of the core |
 
 Erasing or programming stops the CPU while it fetches from the flash: everything that runs from it, the
-interrupts too, waits (a 256 kB sector of an STM32F7 takes up to a second). See [docs/README.md](docs/README.md).
+interrupts too, waits (a 256 kB sector of an STM32F7 takes up to a second). The ESP32-S3 cannot even do that: the work is done
+by the firmware from the internal RAM with the caches off (the interrupts are off for a sector, some tens of milliseconds). See [docs/README.md](docs/README.md).
 
 ## Using it
 
@@ -85,6 +87,7 @@ src/dmflash_config.c       the [flash] section of an .ini
 src/dmflash_device.c       block device ioctls
 src/port/stm32_common/     the flash interface of the STM32F4 and F7
 src/port/stm32f4, stm32f7  lifecycle and the reset of the accelerator
+src/port/esp32s3/          addresses of the flash window -> offsets in the chip; the work is the firmware's (dmod-boot)
 src/port/x86_64/           the flash in RAM (tests)
 configs/                   mcu/<mcu>.ini, board/<board>/flash.ini
 tools/flashtest/           on-board test

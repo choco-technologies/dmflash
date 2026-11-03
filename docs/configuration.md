@@ -8,7 +8,7 @@ read only; `configs/board/<board>/flash.ini` is the chip with a region you may w
 | --- | --- | --- |
 | `driver_name` | | `dmflash` |
 | `driver_order` | 0 | There is no pin and no other driver to wait for |
-| `layout` | *required* | The sectors of the **whole chip**, from its first byte: `4x32k,1x128k,3x256k`. An item is `<count>x<size>` (or just `<size>`); a size is decimal, `0x` hex, or with `k` / `m` (x 1024) |
+| `layout` | *required* | The sectors of the **whole chip**, from its first byte: `4x32k,1x128k,3x256k`. An item is `<count>x<size>` (or just `<size>`); a size is decimal, `0x` hex, or with `k` / `m` (x 1024). At most 4096 sectors in all (the table of them is in the heap) |
 | `base` | `0x08000000` | Address of the first byte of the flash (it is memory mapped: reading is a `memcpy`) |
 | `offset` | 0 | Where the exposed region starts, bytes from the start of the chip; has to be the start of a sector |
 | `size` | to the end | Size of the region; it has to end at the end of a sector |

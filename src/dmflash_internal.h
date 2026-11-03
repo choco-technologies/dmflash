@@ -8,7 +8,7 @@
 #include "dmdrvi.h"
 
 #define DMFLASH_MAGIC           0x464C5348u     /* "FLSH" */
-#define DMFLASH_MAX_SECTORS     1024u
+#define DMFLASH_MAX_SECTORS     4096u
 #define DMFLASH_SCRATCH_SIZE    256u            /* A write goes to the port in pieces of this size at most */
 
 /* The flash of one node */
