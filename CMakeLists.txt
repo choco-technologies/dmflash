@@ -45,7 +45,7 @@ set(DMOD_MODULE_NAME        dmflash)
 set(DMOD_AUTHOR_NAME        "Patryk Kubiak")
 
 # Stack size for the module (should be integer)
-set(DMOD_STACK_SIZE         1024)
+set(DMOD_STACK_SIZE         4096)
 
 # Path to the .dmr file - enables release package creation in build/packages/
 set(DMOD_DMR_PATH           ${CMAKE_CURRENT_SOURCE_DIR}/dmflash.dmr)

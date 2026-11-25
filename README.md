@@ -27,7 +27,7 @@ bootloader update, a small file system (littlefs, with `dmlittlefs`) for setting
 | --- | --- | --- |
 | STM32F7 | `src/port/stm32f7` + `stm32_common` | validated on an STM32F746G-DISCO ([docs/validation](docs/validation/stm32f746g-disco.txt)) |
 | STM32F4 | `src/port/stm32f4` + `stm32_common` | builds; the code is the F7's (the flash interface is the same) - not run on hardware |
-| ESP32-S3 | `src/port/esp32s3` (+ `dmboot_flash_*` of dmod-boot) | validated on the ESP32-S3 2.8" board, 16 MB flash ([docs/validation](docs/validation/esp32s3-lcd28.txt)); the Elecrow DIS08070H (4 MB flash) has a configuration, not run yet |
+| ESP32-S3 | `src/port/esp32s3` (+ `dmboot_flash_*` of dmod-boot) | validated on the ESP32-S3 2.8" board, 16 MB flash ([docs/validation](docs/validation/esp32s3-lcd28.txt)); the Elecrow DIS08070H, 4 MB flash ([docs/validation](docs/validation/elecrow-dis08070h.txt)) |
 | x86_64 | `src/port/x86_64` | a flash in RAM for the tests of the core |
 
 Erasing or programming stops the CPU while it fetches from the flash: everything that runs from it, the
